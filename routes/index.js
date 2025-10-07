@@ -1,7 +1,16 @@
 const express = require('express');
-const sqlite3 = require('sqlite3').verbose();
+const fs = require('fs');
 const path = require('path');
 const router = express.Router();
+
+// Load recipes data
+let recipes = [];
+try {
+  const recipesData = fs.readFileSync(path.resolve(__dirname, '../recipes.json'), 'utf8');
+  recipes = JSON.parse(recipesData);
+} catch (error) {
+  console.error('Error loading recipes:', error);
+}
 
 // GET /?q=chicken,tomato
 router.get('/', function (req, res, next) {
@@ -16,26 +25,20 @@ router.get('/', function (req, res, next) {
     return res.json([]);
   }
 
-  // Build SQL WHERE clause like: LOWER(Ingredients) LIKE ? OR LOWER(Ingredients) LIKE ? ...
-  const whereClauses = ingredients.map(() => 'LOWER(Ingredients) LIKE ?').join(' OR ');
-  const values = ingredients.map(i => `%${i}%`);
+  try {
+    // Filter recipes based on ingredients
+    const filteredRecipes = recipes.filter(recipe => {
+      const recipeIngredients = (recipe.Ingredients || '').toLowerCase();
+      return ingredients.some(ingredient => 
+        recipeIngredients.includes(ingredient)
+      );
+    }).slice(0, 20); // Limit to 20 results
 
-  const SQLquery = `SELECT * FROM recipe WHERE ${whereClauses} LIMIT 20`;
-
-  const db = new sqlite3.Database(path.resolve(__dirname, '../recipe.sqlite'));
-
-  db.serialize(() => {
-    db.all(SQLquery, values, (err, rows) => {
-      if (err) {
-        console.error(err.message);
-        res.status(500).json({ error: "Query failed" });
-      } else {
-        res.json(rows);
-      }
-    });
-  });
-
-  db.close();
+    res.json(filteredRecipes);
+  } catch (error) {
+    console.error('Search error:', error);
+    res.status(500).json({ error: "Search failed" });
+  }
 });
 
 module.exports = router;
