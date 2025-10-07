@@ -1,26 +1,59 @@
-var express = require('express');
-var cors = require('cors');
-var path = require('path');
+const express = require('express');
+const cors = require('cors');
+const fs = require('fs');
+const path = require('path');
 
-var indexRouter = require('./routes/index');
+const app = express();
+const port = process.env.PORT || 4000;
 
-var app = express();
-
+// Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
-app.use(express.static(path.join(__dirname, 'public')));
 
-app.use('/', indexRouter);
+// Load recipes data
+let recipes = [];
+try {
+  const recipesData = fs.readFileSync(path.join(__dirname, 'recipes.json'), 'utf8');
+  recipes = JSON.parse(recipesData);
+  console.log(`Loaded ${recipes.length} recipes`);
+} catch (error) {
+  console.error('Error loading recipes:', error.message);
+}
 
-// catch 404
-app.use(function(req, res, next) {
-  res.status(404).json({ error: 'Not found' });
+// API Route
+app.get('/', (req, res) => {
+  if (!req.query.q) {
+    return res.send("No input given");
+  }
+
+  const rawQuery = req.query.q;
+  const ingredients = rawQuery.split(',').map(i => i.trim().toLowerCase());
+
+  if (ingredients.length === 0) {
+    return res.json([]);
+  }
+
+  try {
+    const filteredRecipes = recipes.filter(recipe => {
+      const recipeIngredients = (recipe.Ingredients || '').toLowerCase();
+      return ingredients.some(ingredient => 
+        recipeIngredients.includes(ingredient)
+      );
+    }).slice(0, 20);
+
+    res.json(filteredRecipes);
+  } catch (error) {
+    console.error('Search error:', error);
+    res.status(500).json({ error: "Search failed" });
+  }
 });
 
-// error handler
-app.use(function(err, req, res, next) {
-  res.status(err.status || 500).json({ error: 'Server error' });
+// Health check
+app.get('/health', (req, res) => {
+  res.json({ status: 'OK', recipes: recipes.length });
 });
 
-module.exports = app;
+// Start server
+app.listen(port, () => {
+  console.log(`✅ Indian Recipe API running on port ${port}`);
+});

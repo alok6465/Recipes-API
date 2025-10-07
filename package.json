@@ -1,19 +1,18 @@
 {
-  "name": "IndianRecipe",
-  "version": "0.0.0",
-  "private": true,
+  "name": "indian-recipe-api",
+  "version": "1.0.0",
+  "description": "A simple Node.js API to search Indian recipes by ingredients",
+  "main": "app.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node app.js"
   },
   "dependencies": {
-    "cors": "^2.8.5",
-    "express": "~4.16.1"
+    "express": "^4.18.2",
+    "cors": "^2.8.5"
   },
-  "main": "app.js",
   "engines": {
-    "node": "18.x"
+    "node": "20.x"
   },
   "author": "",
-  "license": "ISC",
-  "description": ""
+  "license": "MIT"
 }
