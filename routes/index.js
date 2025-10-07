@@ -1,5 +1,5 @@
 const express = require('express');
-const sqlite3 = require('sqlite3').verbose();
+const Database = require('better-sqlite3');
 const path = require('path');
 const router = express.Router();
 
@@ -22,21 +22,18 @@ router.get('/', function (req, res, next) {
 
   const SQLquery = `SELECT * FROM recipe WHERE ${whereClauses} LIMIT 20`;
 
-  let result = [];
-  const db = new sqlite3.Database(path.resolve(__dirname, '../recipe.sqlite'));
-
-  db.serialize(() => {
-    db.all(SQLquery, values, (err, rows) => {
-      if (err) {
-        console.error(err.message);
-        res.status(500).json({ error: "Query failed" });
-      } else {
-        res.json(rows);
-      }
-    });
-  });
-
-  db.close();
+  try {
+    const db = new Database(path.resolve(__dirname, '../recipe.sqlite'));
+    
+    const stmt = db.prepare(SQLquery);
+    const rows = stmt.all(...values);
+    
+    db.close();
+    res.json(rows);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: "Query failed" });
+  }
 });
 
 module.exports = router;

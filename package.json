@@ -3,7 +3,8 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "start": "node ./bin/www"
+    "start": "node ./bin/www",
+    "build": "npm rebuild sqlite3"
   },
   "dependencies": {
     "axios": "^0.21.2",
@@ -15,7 +16,7 @@
     "http-errors": "^1.6.3",
     "jade": "~1.11.0",
     "morgan": "~1.9.1",
-    "sqlite3": "^5.1.7"
+    "better-sqlite3": "^8.7.0"
   },
   "main": "app.js",
   "author": "",
