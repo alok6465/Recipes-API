@@ -16,9 +16,12 @@
     "http-errors": "^1.6.3",
     "jade": "~1.11.0",
     "morgan": "~1.9.1",
-    "better-sqlite3": "^8.7.0"
+    "sqlite3": "^5.1.6"
   },
   "main": "app.js",
+  "engines": {
+    "node": "18.x"
+  },
   "author": "",
   "license": "ISC",
   "description": ""
