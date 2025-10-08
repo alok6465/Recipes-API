@@ -6,26 +6,25 @@ const path = require('path');
 const app = express();
 const port = process.env.PORT || 4000;
 
-// Mobile-friendly CORS configuration
-app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: false
-}));
-
-// Security headers for mobile apps
+// Maximum compatibility CORS
+app.use(cors());
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, HEAD');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Cache-Control, Pragma');
+  res.header('Access-Control-Expose-Headers', 'Content-Length, X-JSON');
+  res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.header('Pragma', 'no-cache');
+  res.header('Expires', '0');
   next();
 });
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(express.text());
+app.use(express.raw());
 
-// Load recipes data
+// Load recipes
 let recipes = [];
 try {
   const recipesData = fs.readFileSync(path.join(__dirname, 'recipes.json'), 'utf8');
@@ -35,95 +34,127 @@ try {
   console.error('Error loading recipes:', error.message);
 }
 
-// Handle preflight requests for mobile apps
-app.options('*', (req, res) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  res.sendStatus(200);
-});
-
-// API Route
-app.get('/', (req, res) => {
-  // Set mobile-friendly headers
-  res.header('Content-Type', 'application/json');
-  res.header('Cache-Control', 'no-cache');
-  if (!req.query.q) {
-    return res.send("No input given");
-  }
-
-  const rawQuery = req.query.q;
-  const ingredients = rawQuery.split(',').map(i => i.trim().toLowerCase());
-
-  if (ingredients.length === 0) {
-    return res.json([]);
-  }
-
-  try {
-    const filteredRecipes = recipes.filter(recipe => {
-      const recipeIngredients = (recipe.Ingredients || '').toLowerCase();
-      return ingredients.some(ingredient => 
-        recipeIngredients.includes(ingredient)
-      );
-    }).slice(0, 20);
-
-    res.json(filteredRecipes);
-  } catch (error) {
-    console.error('Search error:', error);
-    res.status(500).json({ error: "Search failed" });
-  }
-});
-
-// Mobile-friendly API endpoint
-app.get('/api/recipes', (req, res) => {
-  res.header('Content-Type', 'application/json');
+// Universal response handler
+function universalResponse(req, res, data) {
+  const callback = req.query.callback || req.query.jsonp;
+  const format = req.query.format || 'json';
   
-  if (!req.query.q) {
-    return res.json({ 
-      success: false, 
-      message: "Please provide ingredients using ?q=tomato,onion",
-      data: [] 
-    });
+  // Handle different response formats
+  if (callback) {
+    // JSONP for older browsers/cross-domain
+    res.type('application/javascript');
+    return res.send(`${callback}(${JSON.stringify(data)});`);
   }
-
-  const rawQuery = req.query.q;
-  const ingredients = rawQuery.split(',').map(i => i.trim().toLowerCase());
-
-  try {
-    const filteredRecipes = recipes.filter(recipe => {
-      const recipeIngredients = (recipe.Ingredients || '').toLowerCase();
-      return ingredients.some(ingredient => 
-        recipeIngredients.includes(ingredient)
-      );
-    }).slice(0, 20);
-
-    res.json({
-      success: true,
-      count: filteredRecipes.length,
-      data: filteredRecipes
-    });
-  } catch (error) {
-    res.status(500).json({ 
-      success: false, 
-      message: "Search failed", 
-      data: [] 
-    });
+  
+  if (format === 'xml') {
+    res.type('application/xml');
+    return res.send(`<?xml version="1.0"?><response>${JSON.stringify(data)}</response>`);
   }
-});
+  
+  // Default JSON
+  res.type('application/json');
+  res.json(data);
+}
 
-// Health check
-app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
-    recipes: recipes.length,
-    endpoints: {
-      search: '/?q=tomato,onion',
-      mobile: '/api/recipes?q=tomato,onion'
+// Search function
+function searchRecipes(query) {
+  if (!query) return [];
+  
+  const ingredients = query.split(',').map(i => i.trim().toLowerCase());
+  return recipes.filter(recipe => {
+    const recipeIngredients = (recipe.Ingredients || '').toLowerCase();
+    return ingredients.some(ingredient => 
+      recipeIngredients.includes(ingredient)
+    );
+  }).slice(0, 20);
+}
+
+// Handle ALL HTTP methods for maximum compatibility
+['GET', 'POST', 'PUT', 'DELETE', 'PATCH'].forEach(method => {
+  app[method.toLowerCase()]('/', (req, res) => {
+    const query = req.query.q || req.body?.q || req.body?.query || req.query.query;
+    
+    if (!query) {
+      return universalResponse(req, res, {
+        message: "Provide ingredients: /?q=tomato,onion",
+        example: "/?q=chicken or POST with {\"q\":\"rice,dal\"}"
+      });
+    }
+
+    try {
+      const results = searchRecipes(query);
+      universalResponse(req, res, results);
+    } catch (error) {
+      universalResponse(req, res, { error: "Search failed" });
     }
   });
 });
 
+// Structured API endpoint
+['GET', 'POST'].forEach(method => {
+  app[method.toLowerCase()]('/api/recipes', (req, res) => {
+    const query = req.query.q || req.body?.q || req.body?.query;
+    
+    if (!query) {
+      return universalResponse(req, res, {
+        success: false,
+        message: "Provide ingredients using q parameter",
+        data: []
+      });
+    }
+
+    try {
+      const results = searchRecipes(query);
+      universalResponse(req, res, {
+        success: true,
+        count: results.length,
+        query: query,
+        data: results
+      });
+    } catch (error) {
+      universalResponse(req, res, {
+        success: false,
+        message: "Search failed",
+        data: []
+      });
+    }
+  });
+});
+
+// OPTIONS for all routes
+app.options('*', (req, res) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH');
+  res.header('Access-Control-Allow-Headers', '*');
+  res.sendStatus(200);
+});
+
+// Health check
+app.get('/health', (req, res) => {
+  universalResponse(req, res, {
+    status: 'OK',
+    recipes: recipes.length,
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    formats: ['json', 'jsonp', 'xml'],
+    endpoints: {
+      basic: '/?q=tomato',
+      api: '/api/recipes?q=tomato',
+      post: 'POST / with {"q":"tomato"}',
+      jsonp: '/?q=tomato&callback=func'
+    }
+  });
+});
+
+// Catch all other routes
+app.use('*', (req, res) => {
+  universalResponse(req, res, {
+    error: 'Route not found',
+    available: ['/', '/api/recipes', '/health']
+  });
+});
+
 // Start server
-app.listen(port, () => {
-  console.log(`✅ Indian Recipe API running on port ${port}`);
+app.listen(port, '0.0.0.0', () => {
+  console.log(`🌍 Universal Recipe API running on port ${port}`);
+  console.log(`📱 Mobile | 💻 Laptop | 📟 Tablet | 🖥️ Desktop - ALL SUPPORTED`);
 });
